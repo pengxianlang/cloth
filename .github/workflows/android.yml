@@ -6,8 +6,6 @@ on:
     branches:
       - main
       - master
-    paths:
-      - '**'
   workflow_dispatch:
 
 jobs:
@@ -18,13 +16,37 @@ jobs:
       - name: Download repository
         uses: actions/checkout@v4
 
-      - name: Extract Android project ZIP
+      - name: Find and extract Android project ZIP
+        shell: bash
         run: |
+          set -e
+          ZIP_FILE=$(find . -type f -iname "*.zip" -not -path "./.git/*" -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "错误：没有找到 ZIP 文件"
+            exit 1
+          fi
+
+          echo "找到 ZIP：$ZIP_FILE"
+
           mkdir -p android-project
-          unzip -o "穿衣温度助手-GitHub云编译项目.zip" -d android-project
-          PROJECT_DIR=$(dirname "$(find android-project -name settings.gradle -print -quit)")
-          test -f "$PROJECT_DIR/app/build.gradle"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          unzip -o "$ZIP_FILE" -d android-project
+
+          SETTINGS_FILE=$(find android-project -name settings.gradle -type f -print -quit)
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "错误：没有找到 settings.gradle"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
+            echo "错误：没有找到 app/build.gradle"
+            exit 1
+          fi
+
+          echo "项目目录：$PROJECT_DIR"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -37,12 +59,28 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build APK
-        run: gradle -p "$PROJECT_DIR" assembleDebug
+      - name: Build and upload APK
+        shell: bash
+        run: |
+          set -e
+
+          SETTINGS_FILE=$(find android-project -name settings.gradle -type f -print -quit)
+          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+
+          gradle -p "$PROJECT_DIR" assembleDebug
+
+          APK_FILE=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" -name "*.apk" -type f -print -quit)
+
+          if [ -z "$APK_FILE" ]; then
+            echo "错误：没有生成 APK"
+            exit 1
+          fi
+
+          echo "找到 APK：$APK_FILE"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: 穿衣助手-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          path: android-project/**/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
