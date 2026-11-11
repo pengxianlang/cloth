@@ -1,4 +1,23 @@
 
+name: Build 穿衣助手 APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
       - name: Extract Android project ZIP
         run: |
           mkdir -p android-project
